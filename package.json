@@ -1,0 +1,12 @@
+{
+  "name": "WaterMarkAdder",
+  "version": "1.0.0",
+  "main": "app.js",
+  "repository": "git@github.com:ponurrrak/WaterMarkAdder.git",
+  "author": "ponurrrak",
+  "license": "MIT",
+  "dependencies": {
+    "inquirer": "6.5.0",
+    "jimp": "0.6.4"
+  }
+}
