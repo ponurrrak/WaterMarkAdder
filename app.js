@@ -6,12 +6,14 @@ const outputFileSufix = '-with-watermark';
 const imagesFolder = 'img/';
 const brightnessIncreaseFactor = .2;
 const contrastIncreaseFactor = .2;
-const welcomeMessage = 'Hi! Welcome to "Watermark manager". Copy your image files to ' + imagesFolder + ' folder. Then you\'ll be able to use them in the app. Are you ready?';
-const notSuchFilesMessage = '\nFollowing file(s) seem(s) to not exist: ';
-const restartMessage = '\nProgram is going to restart, so you can try again.\n\n';
-const errorMessage = '\nSomething went wrong... Try again!\n\n';
-const successMessage1 = '\nDone! Check ';
-const successMessage2 = '.\nNow You can try with another image.\n\n';
+const messages = {
+  welcome: 'Hi! Welcome to "Watermark manager". Copy your image files to ' + imagesFolder + ' folder. Then you\'ll be able to use them in the app. Are you ready?',
+  notSuchFiles: '\nFollowing file(s) seem(s) to not exist: ',
+  restart: '\nProgram is going to restart, so you can try again.\n\n',
+  error: '\nSomething went wrong... Try again!\n\n',
+  success1: '\nDone! Check ',
+  success2: '.\nNow You can try with another image.\n\n',
+};
 
 const addTextWatermarkToImage = async function(inputFile, outputFile, text, editOptions) {
   try {
@@ -30,10 +32,10 @@ const addTextWatermarkToImage = async function(inputFile, outputFile, text, edit
     }
     image.quality(100).writeAsync(outputFile);
   } catch(e) {
-    process.stdout.write(errorMessage);
+    process.stdout.write(messages.error);
     process.exit();
   }
-  process.stdout.write(successMessage1 + outputFile + successMessage2);
+  process.stdout.write(messages.success1 + outputFile + messages.success2);
   startApp();
 };
 
@@ -54,10 +56,10 @@ const addImageWatermarkToImage = async function(inputFile, outputFile, watermark
     }
     image.quality(100).writeAsync(outputFile);
   } catch(e) {
-    process.stdout.write(errorMessage);
+    process.stdout.write(messages.error);
     process.exit();
   }
-  process.stdout.write(successMessage1 + outputFile + successMessage2);
+  process.stdout.write(messages.success1 + outputFile + messages.success2);
   startApp();
 };
 
@@ -98,20 +100,22 @@ const prepareOutputFilename = inputFilename => {
 
 const checkIfFilesExist = (...paths) => {
   const nonExistingPaths = paths.filter(path =>
-    !fs.existsSync(path)
+    !fs.existsSync(path) || path === imagesFolder
   );
-  nonExistingPaths.length && process.stdout.write(notSuchFilesMessage + nonExistingPaths.join(', ') + '.');
+  nonExistingPaths.length && process.stdout.write(messages.notSuchFiles + nonExistingPaths.join(', ') + '.');
   return !nonExistingPaths.length;
 };
 
-const startApp = async () => {
-  const answer = await inquirer.prompt([{
+const getConfirm = () => (
+  inquirer.prompt([{
     name: 'start',
-    message: welcomeMessage,
+    message: messages.welcome,
     type: 'confirm'
-  }]);
-  if(!answer.start) process.exit();
-  const options = await inquirer.prompt([{
+  }])
+);
+
+const getOptions = () => (
+  inquirer.prompt([{
     name: 'inputImage',
     type: 'input',
     message: 'What file do you want to mark?',
@@ -121,51 +125,74 @@ const startApp = async () => {
     type: 'list',
     message: 'What type of watermark would you add?',
     choices: ['Text watermark', 'Image watermark'],
-  }]);
-  const inputImagePath = imagesFolder + options.inputImage;
-  const outputImagePath = imagesFolder + prepareOutputFilename(options.inputImage);
-  const editOptions = await inquirer.prompt([{
+  }, {
     name: 'shouldBeEdited',
     message: 'Apart from adding a watermark, would you like to edit an image?',
     type: 'confirm'
-  }]);
-  if(editOptions.shouldBeEdited){
-    const selectedOptions = await inquirer.prompt([{
-      name: 'optionNames',
-      type: 'checkbox',
-      message: 'How would you like to edit an image?',
-      choices: ['Make image brighter', 'Increase contrast', 'Make image b&w', 'Invert image'],
-    }]);
-    options.selectedOptions = selectedOptions.optionNames;
-  }
+  }])
+);
+
+const getEditOptions = () => (
+  inquirer.prompt([{
+    name: 'optionNames',
+    type: 'checkbox',
+    message: 'How would you like to edit an image?',
+    choices: ['Make image brighter', 'Increase contrast', 'Make image b&w', 'Invert image'],
+  }])
+);
+
+const getWatermarkText = () => (
+  inquirer.prompt([{
+    name: 'value',
+    type: 'input',
+    message: 'Type your watermark text:',
+  }])
+);
+
+const getWatermarkImage = () => (
+  inquirer.prompt([{
+    name: 'filename',
+    type: 'input',
+    message: 'Type your watermark name:',
+    default: 'logo.png',
+  }])
+);
+
+const applyWatermark = async (inputImagePath, outputImagePath, options) => {
+  let haveToRestart = true;
   if(options.watermarkType === 'Text watermark') {
-    const text = await inquirer.prompt([{
-      name: 'value',
-      type: 'input',
-      message: 'Type your watermark text:',
-    }]);
-    options.watermarkText = text.value;
+    const text = await getWatermarkText();
     if(checkIfFilesExist(inputImagePath)) {
-      addTextWatermarkToImage(inputImagePath, outputImagePath, options.watermarkText, options.selectedOptions);
-    } else {
-      process.stdout.write(restartMessage);
-      startApp();
+      haveToRestart = false;
+      addTextWatermarkToImage(inputImagePath, outputImagePath, text.value, options.selectedOptions);
     }
   } else {
-    const image = await inquirer.prompt([{
-      name: 'filename',
-      type: 'input',
-      message: 'Type your watermark name:',
-      default: 'logo.png',
-    }]);
-    options.watermarkImagePath = imagesFolder + image.filename;
-    if(checkIfFilesExist(inputImagePath, options.watermarkImagePath)){
-      addImageWatermarkToImage(inputImagePath, outputImagePath, options.watermarkImagePath, options.selectedOptions);
-    } else {
-      process.stdout.write(restartMessage);
-      startApp();
+    const watermarkImage = await getWatermarkImage();
+    const watermarkImagePath = imagesFolder + watermarkImage.filename;
+    if(checkIfFilesExist(inputImagePath, watermarkImagePath)){
+      haveToRestart = false;
+      addImageWatermarkToImage(inputImagePath, outputImagePath, watermarkImagePath, options.selectedOptions);
     }
   }
+  if(haveToRestart) {
+    process.stdout.write(messages.restart);
+    startApp();
+  }
+};
+
+const startApp = async () => {
+  const confirm = await getConfirm();
+  if(!confirm.start){
+    process.exit();
+  }
+  const options = await getOptions();
+  if(options.shouldBeEdited){
+    const selectedOptions = await getEditOptions();
+    options.selectedOptions = selectedOptions.optionNames;
+  }
+  const inputImagePath = imagesFolder + options.inputImage;
+  const outputImagePath = imagesFolder + prepareOutputFilename(options.inputImage);
+  applyWatermark(inputImagePath, outputImagePath, options);
 };
 
 startApp();
